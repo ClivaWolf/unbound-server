@@ -15,8 +15,8 @@ async function bootstrap() {
   app.use('/uploads', express.static(join(__dirname, '..', 'uploads')));// раздача статики
 
   const config = new DocumentBuilder()
-    .setTitle('Smart teach swagger API')
-    .setDescription('The smart-teach API description')
+    .setTitle('Unbound swagger API')
+    .setDescription('The unbound API description')
     .setVersion('1.0')
     .addBearerAuth()
     .build();

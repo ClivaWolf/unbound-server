@@ -9,6 +9,7 @@ import { TypeOrmConfig } from './app/type-orm.config';
 import { DatabaseModule } from './app/database.module';
 import { AuthModule } from './auth/auth.module';
 import { RolesModule } from './resources/roles/roles.module';
+import { PostsModule } from './resources/posts/posts.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { RolesModule } from './resources/roles/roles.module';
     UsersModule,
     AuthModule,
     RolesModule,
+    PostsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
