@@ -4,6 +4,9 @@
 /build
 /uploads/*
 
+/src/project_files.txt
+/src/collect_files.py
+
 # Logs
 logs
 *.log
