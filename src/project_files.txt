@@ -798,12 +798,17 @@ import { CreatePostDto, UpdatePostDto } from "./dto/create-post.dto";
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JWTAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { UserId } from "../../decorators/user-id.decorator";
-import { log } from "console";
+import { CreateCommentDto, UpdateCommentDto } from "./dto/create-comment.dto";
+import { CreateVoteDto } from "./dto/create-vote.dto";
+import { VotesService } from "./votes.service";
 
 @ApiTags("posts")
 @Controller("posts")
 export class PostsController {
-  constructor(private readonly postsService: PostsService) {}
+  constructor(
+    private readonly postsService: PostsService,
+    private readonly votesService: VotesService,
+  ) {}
 
   @Post()
   @UseGuards(JWTAuthGuard)
@@ -847,6 +852,66 @@ export class PostsController {
   delete(@Param("id") id: string, @UserId() userId: string) {
     return this.postsService.delete(id, userId);
   }
+
+  @Post(":id/comments")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Create comment", description: "Add a comment to a post" })
+  @ApiBearerAuth()
+  @ApiBody({ type: CreateCommentDto })
+  createComment(@Param("id") postId: string, @UserId() userId: string, @Body() dto: CreateCommentDto) {
+    return this.postsService.createComment(postId, userId, dto);
+  }
+
+  @Patch("comments/:commentId")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Update comment", description: "Update an existing comment" })
+  @ApiBearerAuth()
+  @ApiBody({ type: UpdateCommentDto })
+  updateComment(@Param("commentId") commentId: string, @UserId() userId: string, @Body() dto: UpdateCommentDto) {
+    return this.postsService.updateComment(commentId, userId, dto);
+  }
+
+  @Delete("comments/:commentId")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Delete comment", description: "Delete a comment" })
+  @ApiBearerAuth()
+  deleteComment(@Param("commentId") commentId: string, @UserId() userId: string) {
+    return this.postsService.deleteComment(commentId, userId);
+  }
+
+  @Post(":id/vote")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Vote on post", description: "Add an upvote (+1) or downvote (-1) to a post" })
+  @ApiBearerAuth()
+  @ApiBody({ type: CreateVoteDto })
+  votePost(@Param("id") postId: string, @UserId() userId: string, @Body() dto: CreateVoteDto) {
+    return this.votesService.votePost(postId, userId, dto);
+  }
+
+  @Delete(":id/vote")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Remove vote from post", description: "Remove a vote from a post" })
+  @ApiBearerAuth()
+  removeVotePost(@Param("id") postId: string, @UserId() userId: string) {
+    return this.votesService.removeVotePost(postId, userId);
+  }
+
+  @Post("comments/:commentId/vote")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Vote on comment", description: "Add an upvote (+1) or downvote (-1) to a comment" })
+  @ApiBearerAuth()
+  @ApiBody({ type: CreateVoteDto })
+  voteComment(@Param("commentId") commentId: string, @UserId() userId: string, @Body() dto: CreateVoteDto) {
+    return this.votesService.voteComment(commentId, userId, dto);
+  }
+
+  @Delete("comments/:commentId/vote")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Remove vote from comment", description: "Remove a vote from a comment" })
+  @ApiBearerAuth()
+  removeVoteComment(@Param("commentId") commentId: string, @UserId() userId: string) {
+    return this.votesService.removeVoteComment(commentId, userId);
+  }
 }
 
 ### File: src/resources\posts\posts.module.ts
@@ -856,11 +921,14 @@ import { PostsService } from "./posts.service";
 import { PostsController } from "./posts.controller";
 import { PostEntity } from "./entities/post.entity";
 import { UserEntity } from "../users/entities/user.entity";
+import { CommentEntity } from "./entities/comment.entity";
+import { VoteEntity } from "./entities/vote.entity";
+import { VotesService } from "./votes.service";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PostEntity, UserEntity])],
+  imports: [TypeOrmModule.forFeature([PostEntity, UserEntity, CommentEntity,VoteEntity])],
   controllers: [PostsController],
-  providers: [PostsService],
+  providers: [PostsService, VotesService],
 })
 export class PostsModule {}
 
@@ -871,6 +939,8 @@ import { Repository } from "typeorm";
 import { PostEntity, PostVisibility } from "./entities/post.entity";
 import { CreatePostDto, UpdatePostDto } from "./dto/create-post.dto";
 import { UserEntity } from "../users/entities/user.entity";
+import { CreateCommentDto, UpdateCommentDto } from "./dto/create-comment.dto";
+import { CommentEntity } from "./entities/comment.entity";
 
 @Injectable()
 export class PostsService {
@@ -879,6 +949,10 @@ export class PostsService {
     private repository: Repository<PostEntity>,
     @InjectRepository(UserEntity)
     private userRepository: Repository<UserEntity>,
+    @InjectRepository(CommentEntity)
+    private commentRepository: Repository<CommentEntity>,
+    // @InjectRepository(UpvoteEntity)
+    // private upvoteRepository: Repository<UpvoteEntity>,
   ) {}
 
   async create(userId: string, dto: CreatePostDto) {
@@ -894,11 +968,14 @@ export class PostsService {
   async findById(id: string) {
     const post = await this.repository.findOne({
       where: { id },
-      relations: ["author"],
+      relations: ["author", "comments", "comments.author", "votes", "votes.user"],
     });
     if (!post) {
       throw new HttpException("Пост не найден", 404);
     }
+    // Увеличиваем счётчик просмотров
+    post.views += 1;
+    await this.repository.save(post);
     return post;
   }
 
@@ -910,7 +987,7 @@ export class PostsService {
     const skip = (page - 1) * limit;
     const [posts, total] = await this.repository.findAndCount({
       where: { author: { login }, visibility: PostVisibility.PUBLIC },
-      relations: ["author"],
+      relations: ["author", "comments", "votes"],
       take: limit,
       skip,
       order: { createdAt: "DESC" },
@@ -939,7 +1016,190 @@ export class PostsService {
     await this.repository.softDelete(id);
     return { message: "Пост удалён" };
   }
+
+  async createComment(postId: string, userId: string, dto: CreateCommentDto) {
+    const post = await this.repository.findOneBy({ id: postId });
+    if (!post) {
+      throw new HttpException("Пост не найден", 404);
+    }
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) {
+      throw new HttpException("Пользователь не существует", 404);
+    }
+    const comment = this.commentRepository.create({
+      ...dto,
+      post,
+      author: user,
+    });
+    return this.commentRepository.save(comment);
+  }
+
+  async updateComment(id: string, userId: string, dto: UpdateCommentDto) {
+    const comment = await this.commentRepository.findOne({
+      where: { id, author: { id: userId } },
+    });
+    if (!comment) {
+      throw new HttpException("Комментарий не найден или доступ запрещён", 403);
+    }
+    Object.assign(comment, dto);
+    return this.commentRepository.save(comment);
+  }
+
+  async deleteComment(id: string, userId: string) {
+    const comment = await this.commentRepository.findOne({
+      where: { id, author: { id: userId } },
+    });
+    if (!comment) {
+      throw new HttpException("Комментарий не найден или доступ запрещён", 403);
+    }
+    await this.commentRepository.softDelete(id);
+    return { message: "Комментарий удалён" };
+  }
 }
+
+### File: src/resources\posts\votes.service.ts
+import { HttpException, Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { VoteEntity } from "./entities/vote.entity";
+import { PostEntity } from "./entities/post.entity";
+import { CommentEntity } from "./entities/comment.entity";
+import { UserEntity } from "../users/entities/user.entity";
+import { CreateVoteDto } from "./dto/create-vote.dto";
+
+@Injectable()
+export class VotesService {
+  constructor(
+    @InjectRepository(VoteEntity)
+    private voteRepository: Repository<VoteEntity>,
+    @InjectRepository(PostEntity)
+    private postRepository: Repository<PostEntity>,
+    @InjectRepository(CommentEntity)
+    private commentRepository: Repository<CommentEntity>,
+    @InjectRepository(UserEntity)
+    private userRepository: Repository<UserEntity>,
+  ) {}
+
+  async votePost(postId: string, userId: string, dto: CreateVoteDto) {
+    const post = await this.postRepository.findOneBy({ id: postId });
+    if (!post) {
+      throw new HttpException("Пост не найден", 404);
+    }
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) {
+      throw new HttpException("Пользователь не существует", 404);
+    }
+    const existingVote = await this.voteRepository.findOne({
+      where: { post: { id: postId }, user: { id: userId } },
+    });
+    if (existingVote) {
+      if (existingVote.value === dto.value) {
+        throw new HttpException("Вы уже проголосовали так", 400);
+      }
+      // Обновляем голос
+      existingVote.value = dto.value;
+      await this.voteRepository.save(existingVote);
+      await this.updatePostVoteScore(postId);
+      return existingVote;
+    }
+    const vote = this.voteRepository.create({
+      value: dto.value,
+      user,
+      post,
+      comment: null,
+    });
+    await this.voteRepository.save(vote);
+    await this.updatePostVoteScore(postId);
+    return vote;
+  }
+
+  async voteComment(commentId: string, userId: string, dto: CreateVoteDto) {
+    const comment = await this.commentRepository.findOneBy({ id: commentId });
+    if (!comment) {
+      throw new HttpException("Комментарий не найден", 404);
+    }
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) {
+      throw new HttpException("Пользователь не существует", 404);
+    }
+    const existingVote = await this.voteRepository.findOne({
+      where: { comment: { id: commentId }, user: { id: userId } },
+    });
+    if (existingVote) {
+      if (existingVote.value === dto.value) {
+        throw new HttpException("Вы уже проголосовали так", 400);
+      }
+      // Обновляем голос
+      existingVote.value = dto.value;
+      await this.voteRepository.save(existingVote);
+      await this.updateCommentVoteScore(commentId);
+      return existingVote;
+    }
+    const vote = this.voteRepository.create({
+      value: dto.value,
+      user,
+      post: null,
+      comment,
+    });
+    await this.voteRepository.save(vote);
+    await this.updateCommentVoteScore(commentId);
+    return vote;
+  }
+
+  async removeVotePost(postId: string, userId: string) {
+    const vote = await this.voteRepository.findOne({
+      where: { post: { id: postId }, user: { id: userId } },
+    });
+    if (!vote) {
+      throw new HttpException("Голос не найден", 404);
+    }
+    await this.voteRepository.delete(vote.id);
+    await this.updatePostVoteScore(postId);
+    return { message: "Голос удалён" };
+  }
+
+  async removeVoteComment(commentId: string, userId: string) {
+    const vote = await this.voteRepository.findOne({
+      where: { comment: { id: commentId }, user: { id: userId } },
+    });
+    if (!vote) {
+      throw new HttpException("Голос не найден", 404);
+    }
+    await this.voteRepository.delete(vote.id);
+    await this.updateCommentVoteScore(commentId);
+    return { message: "Голос удалён" };
+  }
+
+  private async updatePostVoteScore(postId: string) {
+    const votes = await this.voteRepository.find({
+      where: { post: { id: postId } },
+    });
+    const voteScore = votes.reduce((sum, vote) => sum + vote.value, 0);
+    await this.postRepository.update(postId, { voteScore });
+  }
+
+  private async updateCommentVoteScore(commentId: string) {
+    const votes = await this.voteRepository.find({
+      where: { comment: { id: commentId } },
+    });
+    const voteScore = votes.reduce((sum, vote) => sum + vote.value, 0);
+    await this.commentRepository.update(commentId, { voteScore });
+  }
+}
+
+### File: src/resources\posts\dto\create-comment.dto.ts
+import { ApiProperty } from "@nestjs/swagger";
+import { IsString, IsNotEmpty } from "class-validator";
+import { PartialType } from "@nestjs/swagger";
+
+export class CreateCommentDto {
+  @ApiProperty({ example: "Amazing artwork!", description: "Comment content" })
+  @IsString()
+  @IsNotEmpty()
+  content: string;
+}
+
+export class UpdateCommentDto extends PartialType(CreateCommentDto) {}
 
 ### File: src/resources\posts\dto\create-post.dto.ts
 import { ApiProperty } from "@nestjs/swagger";
@@ -978,9 +1238,56 @@ export class CreatePostDto {
 
 export class UpdatePostDto extends PartialType(CreatePostDto) {}
 
-### File: src/resources\posts\entities\post.entity.ts
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from "typeorm";
+### File: src/resources\posts\dto\create-vote.dto.ts
+import { ApiProperty } from "@nestjs/swagger";
+import { IsIn, IsNotEmpty } from "class-validator";
+
+export class CreateVoteDto {
+  @ApiProperty({ example: 1, description: "Vote value: +1 for upvote, -1 for downvote" })
+  @IsNotEmpty()
+  @IsIn([1, -1])
+  value: number;
+}
+
+### File: src/resources\posts\entities\comment.entity.ts
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm";
 import { UserEntity } from "../../users/entities/user.entity";
+import { PostEntity } from "src/resources/posts/entities/post.entity";
+import { VoteEntity } from "./vote.entity";
+
+
+@Entity()
+export class CommentEntity {
+  @PrimaryGeneratedColumn("uuid")
+  id: string;
+
+  @ManyToOne(() => PostEntity, (post) => post.comments)
+  post: PostEntity;
+
+  @ManyToOne(() => UserEntity, (user) => user.comments)
+  author: UserEntity;
+
+  @Column()
+  content: string;
+
+  @Column({ default: 0 })
+  voteScore: number; // Сумма голосов (+1/-1)
+
+  @OneToMany(() => VoteEntity, (vote) => vote.comment)
+  votes: VoteEntity[];
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+
+### File: src/resources\posts\entities\post.entity.ts
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm";
+import { UserEntity } from "../../users/entities/user.entity";
+import { CommentEntity } from "src/resources/posts/entities/comment.entity";
+import { VoteEntity } from "./vote.entity";
 
 export enum PostVisibility {
   PUBLIC = "public",
@@ -1008,11 +1315,47 @@ export class PostEntity {
   @Column({ type: "enum", enum: PostVisibility, default: PostVisibility.PUBLIC })
   visibility: PostVisibility;
 
+  @Column({ default: 0 })
+  views: number; // Статистика просмотров
+
+  @OneToMany(() => CommentEntity, (comment) => comment.post)
+  comments: CommentEntity[];
+
+  @Column({ default: 0 })
+  voteScore: number; // Сумма голосов (+1/-1)
+
+  @OneToMany(() => VoteEntity, (vote) => vote.post)
+  votes: VoteEntity[];
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
+}
+
+### File: src/resources\posts\entities\vote.entity.ts
+import { Entity, ManyToOne, PrimaryGeneratedColumn, Column } from "typeorm";
+import { UserEntity } from "../../users/entities/user.entity";
+import { PostEntity } from "./post.entity";
+import { CommentEntity } from "./comment.entity";
+
+@Entity()
+export class VoteEntity {
+  @PrimaryGeneratedColumn("uuid")
+  id: string;
+
+  @Column({ type: "int" })
+  value: number; // +1 для положительного, -1 для отрицательного
+
+  @ManyToOne(() => UserEntity, (user) => user.votes)
+  user: UserEntity;
+
+  @ManyToOne(() => PostEntity, (post) => post.votes, { nullable: true })
+  post: PostEntity | null;
+
+  @ManyToOne(() => CommentEntity, (comment) => comment.votes, { nullable: true })
+  comment: CommentEntity | null;
 }
 
 ### File: src/resources\roles\roles.controller.ts
@@ -1754,6 +2097,8 @@ import { Column, Entity, JoinColumn, JoinTable, ManyToMany, OneToMany, OneToOne,
 import { AboutUserEntity } from "./about-user.entity";
 import { FileEntity } from "src/resources/files/entities/file.entity";
 import { PostEntity } from "src/resources/posts/entities/post.entity";
+import { CommentEntity } from "src/resources/posts/entities/comment.entity";
+import { VoteEntity } from "src/resources/posts/entities/vote.entity";
 
 @Entity()
 export class UserEntity {
@@ -1775,6 +2120,12 @@ export class UserEntity {
   @OneToMany(() => PostEntity, (post) => post.author)
   posts: PostEntity[];
 
+  @OneToMany(() => CommentEntity, (comment) => comment.author)
+  comments: CommentEntity[];
+
+  @OneToMany(() => VoteEntity, (vote) => vote.user)
+  votes: VoteEntity[];
+
   @ManyToMany(() => RoleEntity, (role) => role.users, { cascade: true })
   @JoinTable()
   roles: RoleEntity[];
@@ -1783,9 +2134,6 @@ export class UserEntity {
   @JoinColumn()
   aboutUser?: AboutUserEntity;
 
-//   @OneToOne(() => AboutTeacherEntity, (aboutTeacher) => aboutTeacher.user, { nullable: true })
-//   @JoinColumn()
-//   aboutTeacher?: AboutTeacherEntity;
 }
 
 ### File: src/resources\users\tests\users.controller.spec.ts

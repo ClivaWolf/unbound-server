@@ -1,6 +1,7 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from "typeorm";
+import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm";
 import { UserEntity } from "../../users/entities/user.entity";
 import { PostEntity } from "src/resources/posts/entities/post.entity";
+import { VoteEntity } from "./vote.entity";
 
 
 @Entity()
@@ -16,6 +17,12 @@ export class CommentEntity {
 
   @Column()
   content: string;
+
+  @Column({ default: 0 })
+  voteScore: number; // Сумма голосов (+1/-1)
+
+  @OneToMany(() => VoteEntity, (vote) => vote.comment)
+  votes: VoteEntity[];
 
   @CreateDateColumn()
   createdAt: Date;

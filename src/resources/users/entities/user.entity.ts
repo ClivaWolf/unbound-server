@@ -5,6 +5,7 @@ import { AboutUserEntity } from "./about-user.entity";
 import { FileEntity } from "src/resources/files/entities/file.entity";
 import { PostEntity } from "src/resources/posts/entities/post.entity";
 import { CommentEntity } from "src/resources/posts/entities/comment.entity";
+import { VoteEntity } from "src/resources/posts/entities/vote.entity";
 
 @Entity()
 export class UserEntity {
@@ -29,8 +30,8 @@ export class UserEntity {
   @OneToMany(() => CommentEntity, (comment) => comment.author)
   comments: CommentEntity[];
 
-//   @OneToMany(() => UpvoteEntity, (upvote) => upvote.user)
-//   upvotes: UpvoteEntity[];
+  @OneToMany(() => VoteEntity, (vote) => vote.user)
+  votes: VoteEntity[];
 
   @ManyToMany(() => RoleEntity, (role) => role.users, { cascade: true })
   @JoinTable()
@@ -40,7 +41,4 @@ export class UserEntity {
   @JoinColumn()
   aboutUser?: AboutUserEntity;
 
-//   @OneToOne(() => AboutTeacherEntity, (aboutTeacher) => aboutTeacher.user, { nullable: true })
-//   @JoinColumn()
-//   aboutTeacher?: AboutTeacherEntity;
 }

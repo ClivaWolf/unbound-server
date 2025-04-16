@@ -33,7 +33,7 @@ export class PostsService {
   async findById(id: string) {
     const post = await this.repository.findOne({
       where: { id },
-      relations: ["author", "comments", "comments.author", /*"upvotes", "upvotes.user"*/],
+      relations: ["author", "comments", "comments.author", "votes", "votes.user"],
     });
     if (!post) {
       throw new HttpException("Пост не найден", 404);
@@ -52,7 +52,7 @@ export class PostsService {
     const skip = (page - 1) * limit;
     const [posts, total] = await this.repository.findAndCount({
       where: { author: { login }, visibility: PostVisibility.PUBLIC },
-      relations: ["author", "comments", "upvotes"],
+      relations: ["author", "comments", "votes"],
       take: limit,
       skip,
       order: { createdAt: "DESC" },

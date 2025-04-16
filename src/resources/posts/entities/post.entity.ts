@@ -1,6 +1,7 @@
 import { Column, Entity, ManyToOne, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm";
 import { UserEntity } from "../../users/entities/user.entity";
 import { CommentEntity } from "src/resources/posts/entities/comment.entity";
+import { VoteEntity } from "./vote.entity";
 
 export enum PostVisibility {
   PUBLIC = "public",
@@ -34,8 +35,11 @@ export class PostEntity {
   @OneToMany(() => CommentEntity, (comment) => comment.post)
   comments: CommentEntity[];
 
-//   @OneToMany(() => UpvoteEntity, (upvote) => upvote.post)
-//   upvotes: UpvoteEntity[];
+  @Column({ default: 0 })
+  voteScore: number; // Сумма голосов (+1/-1)
+
+  @OneToMany(() => VoteEntity, (vote) => vote.post)
+  votes: VoteEntity[];
 
   @CreateDateColumn()
   createdAt: Date;
