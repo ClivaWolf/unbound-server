@@ -4,6 +4,8 @@ import { Repository } from "typeorm";
 import { PostEntity, PostVisibility } from "./entities/post.entity";
 import { CreatePostDto, UpdatePostDto } from "./dto/create-post.dto";
 import { UserEntity } from "../users/entities/user.entity";
+import { CreateCommentDto, UpdateCommentDto } from "./dto/create-comment.dto";
+import { CommentEntity } from "./entities/comment.entity";
 
 @Injectable()
 export class PostsService {
@@ -12,6 +14,10 @@ export class PostsService {
     private repository: Repository<PostEntity>,
     @InjectRepository(UserEntity)
     private userRepository: Repository<UserEntity>,
+    @InjectRepository(CommentEntity)
+    private commentRepository: Repository<CommentEntity>,
+    // @InjectRepository(UpvoteEntity)
+    // private upvoteRepository: Repository<UpvoteEntity>,
   ) {}
 
   async create(userId: string, dto: CreatePostDto) {
@@ -27,11 +33,14 @@ export class PostsService {
   async findById(id: string) {
     const post = await this.repository.findOne({
       where: { id },
-      relations: ["author"],
+      relations: ["author", "comments", "comments.author", /*"upvotes", "upvotes.user"*/],
     });
     if (!post) {
       throw new HttpException("Пост не найден", 404);
     }
+    // Увеличиваем счётчик просмотров
+    post.views += 1;
+    await this.repository.save(post);
     return post;
   }
 
@@ -43,7 +52,7 @@ export class PostsService {
     const skip = (page - 1) * limit;
     const [posts, total] = await this.repository.findAndCount({
       where: { author: { login }, visibility: PostVisibility.PUBLIC },
-      relations: ["author"],
+      relations: ["author", "comments", "upvotes"],
       take: limit,
       skip,
       order: { createdAt: "DESC" },
@@ -71,5 +80,44 @@ export class PostsService {
     }
     await this.repository.softDelete(id);
     return { message: "Пост удалён" };
+  }
+
+  async createComment(postId: string, userId: string, dto: CreateCommentDto) {
+    const post = await this.repository.findOneBy({ id: postId });
+    if (!post) {
+      throw new HttpException("Пост не найден", 404);
+    }
+    const user = await this.userRepository.findOneBy({ id: userId });
+    if (!user) {
+      throw new HttpException("Пользователь не существует", 404);
+    }
+    const comment = this.commentRepository.create({
+      ...dto,
+      post,
+      author: user,
+    });
+    return this.commentRepository.save(comment);
+  }
+
+  async updateComment(id: string, userId: string, dto: UpdateCommentDto) {
+    const comment = await this.commentRepository.findOne({
+      where: { id, author: { id: userId } },
+    });
+    if (!comment) {
+      throw new HttpException("Комментарий не найден или доступ запрещён", 403);
+    }
+    Object.assign(comment, dto);
+    return this.commentRepository.save(comment);
+  }
+
+  async deleteComment(id: string, userId: string) {
+    const comment = await this.commentRepository.findOne({
+      where: { id, author: { id: userId } },
+    });
+    if (!comment) {
+      throw new HttpException("Комментарий не найден или доступ запрещён", 403);
+    }
+    await this.commentRepository.softDelete(id);
+    return { message: "Комментарий удалён" };
   }
 }

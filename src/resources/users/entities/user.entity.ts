@@ -4,6 +4,7 @@ import { Column, Entity, JoinColumn, JoinTable, ManyToMany, OneToMany, OneToOne,
 import { AboutUserEntity } from "./about-user.entity";
 import { FileEntity } from "src/resources/files/entities/file.entity";
 import { PostEntity } from "src/resources/posts/entities/post.entity";
+import { CommentEntity } from "src/resources/posts/entities/comment.entity";
 
 @Entity()
 export class UserEntity {
@@ -24,6 +25,12 @@ export class UserEntity {
 
   @OneToMany(() => PostEntity, (post) => post.author)
   posts: PostEntity[];
+
+  @OneToMany(() => CommentEntity, (comment) => comment.author)
+  comments: CommentEntity[];
+
+//   @OneToMany(() => UpvoteEntity, (upvote) => upvote.user)
+//   upvotes: UpvoteEntity[];
 
   @ManyToMany(() => RoleEntity, (role) => role.users, { cascade: true })
   @JoinTable()

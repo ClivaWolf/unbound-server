@@ -5,6 +5,7 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JWTAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { UserId } from "../../decorators/user-id.decorator";
 import { log } from "console";
+import { CreateCommentDto, UpdateCommentDto } from "./dto/create-comment.dto";
 
 @ApiTags("posts")
 @Controller("posts")
@@ -52,5 +53,31 @@ export class PostsController {
   @ApiBearerAuth()
   delete(@Param("id") id: string, @UserId() userId: string) {
     return this.postsService.delete(id, userId);
+  }
+
+  @Post(":id/comments")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Create comment", description: "Add a comment to a post" })
+  @ApiBearerAuth()
+  @ApiBody({ type: CreateCommentDto })
+  createComment(@Param("id") postId: string, @UserId() userId: string, @Body() dto: CreateCommentDto) {
+    return this.postsService.createComment(postId, userId, dto);
+  }
+
+  @Patch("comments/:commentId")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Update comment", description: "Update an existing comment" })
+  @ApiBearerAuth()
+  @ApiBody({ type: UpdateCommentDto })
+  updateComment(@Param("commentId") commentId: string, @UserId() userId: string, @Body() dto: UpdateCommentDto) {
+    return this.postsService.updateComment(commentId, userId, dto);
+  }
+
+  @Delete("comments/:commentId")
+  @UseGuards(JWTAuthGuard)
+  @ApiOperation({ summary: "Delete comment", description: "Delete a comment" })
+  @ApiBearerAuth()
+  deleteComment(@Param("commentId") commentId: string, @UserId() userId: string) {
+    return this.postsService.deleteComment(commentId, userId);
   }
 }
