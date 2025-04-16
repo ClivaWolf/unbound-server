@@ -8,6 +8,7 @@ import { RolesService } from 'src/resources/roles/roles.service';
 import { isUUID } from 'class-validator';
 import { CreateProfileDto, UpdateProfileDto } from './dto/update-profile.dto';
 import { AboutUserEntity } from './entities/about-user.entity';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -87,8 +88,8 @@ export class UsersService {
   async create(createUserDto: CreateUserDto) {
     await this.loginAlreadyExist(createUserDto.login);
     await this.emailAlreadyExist(createUserDto.email);
-
-    const user = await this.repository.create(createUserDto);
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    const user = await this.repository.create({ ...createUserDto, password: hashedPassword });
     const role = await this.roleService.getRoleByValue('USER');
     user.roles = [role];
     return this.repository.save(user);

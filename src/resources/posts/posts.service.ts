@@ -60,6 +60,18 @@ export class PostsService {
     return { items: posts, total };
   }
 
+  async findAll(page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+    const [posts, total] = await this.repository.findAndCount({
+      where: { visibility: PostVisibility.PUBLIC },
+      relations: ['author', 'comments', 'votes'],
+      take: limit,
+      skip,
+      order: { createdAt: 'DESC' },
+    });
+    return { items: posts, total };
+  }
+
   async update(id: string, userId: string, dto: UpdatePostDto) {
     const post = await this.repository.findOne({
       where: { id, author: { id: userId } },

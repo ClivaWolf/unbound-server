@@ -3,6 +3,7 @@ import { UsersService } from '../resources/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from 'src/resources/users/dto/create-user.dto';
 import { UserEntity } from 'src/resources/users/entities/user.entity';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
@@ -15,15 +16,9 @@ export class AuthService {
     const user = login.includes('@')
       ? await this.usersService.findByEmail(login)
       : await this.usersService.findByLogin(login);
-
-    if (!user) {
-      throw new UnauthorizedException('Неверный логин или пароль, проверьте правильность ввода');
-    }
-
-    if (user.password !== password) {
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       throw new UnauthorizedException('Неверный логин или пароль');
     }
-
     return this.generateToken(user);
   }
 

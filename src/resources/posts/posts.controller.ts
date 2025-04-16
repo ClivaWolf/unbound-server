@@ -14,7 +14,7 @@ export class PostsController {
   constructor(
     private readonly postsService: PostsService,
     private readonly votesService: VotesService,
-  ) {}
+  ) { }
 
   @Post()
   @UseGuards(JWTAuthGuard)
@@ -117,5 +117,11 @@ export class PostsController {
   @ApiBearerAuth()
   removeVoteComment(@Param("commentId") commentId: string, @UserId() userId: string) {
     return this.votesService.removeVoteComment(commentId, userId);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all posts', description: 'Retrieve all public posts with pagination' })
+  findAll(@Query('page') page: number = 1, @Query('limit') limit: number = 10) {
+    return this.postsService.findAll(page, limit);
   }
 }
