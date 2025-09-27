@@ -64,7 +64,7 @@ export class PostsService {
     const skip = (page - 1) * limit;
     const [posts, total] = await this.repository.findAndCount({
       where: { visibility: PostVisibility.PUBLIC },
-      relations: ['author', 'comments', 'votes'],
+      relations: ['author', 'author.aboutUser', 'comments', 'votes'],
       take: limit,
       skip,
       order: { createdAt: 'DESC' },

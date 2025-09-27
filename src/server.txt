@@ -268,6 +268,7 @@ import { UsersService } from '../resources/users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from 'src/resources/users/dto/create-user.dto';
 import { UserEntity } from 'src/resources/users/entities/user.entity';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
@@ -280,15 +281,9 @@ export class AuthService {
     const user = login.includes('@')
       ? await this.usersService.findByEmail(login)
       : await this.usersService.findByLogin(login);
-
-    if (!user) {
-      throw new UnauthorizedException('Неверный логин или пароль, проверьте правильность ввода');
-    }
-
-    if (user.password !== password) {
+    if (!user || !(await bcrypt.compare(password, user.password))) {
       throw new UnauthorizedException('Неверный логин или пароль');
     }
-
     return this.generateToken(user);
   }
 
@@ -808,7 +803,7 @@ export class PostsController {
   constructor(
     private readonly postsService: PostsService,
     private readonly votesService: VotesService,
-  ) {}
+  ) { }
 
   @Post()
   @UseGuards(JWTAuthGuard)
@@ -912,6 +907,12 @@ export class PostsController {
   removeVoteComment(@Param("commentId") commentId: string, @UserId() userId: string) {
     return this.votesService.removeVoteComment(commentId, userId);
   }
+
+  @Get()
+  @ApiOperation({ summary: 'Get all posts', description: 'Retrieve all public posts with pagination' })
+  findAll(@Query('page') page: number = 1, @Query('limit') limit: number = 10) {
+    return this.postsService.findAll(page, limit);
+  }
 }
 
 ### File: src/resources\posts\posts.module.ts
@@ -991,6 +992,18 @@ export class PostsService {
       take: limit,
       skip,
       order: { createdAt: "DESC" },
+    });
+    return { items: posts, total };
+  }
+
+  async findAll(page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+    const [posts, total] = await this.repository.findAndCount({
+      where: { visibility: PostVisibility.PUBLIC },
+      relations: ['author', 'comments', 'votes'],
+      take: limit,
+      skip,
+      order: { createdAt: 'DESC' },
     });
     return { items: posts, total };
   }
@@ -1716,6 +1729,7 @@ import { RolesService } from 'src/resources/roles/roles.service';
 import { isUUID } from 'class-validator';
 import { CreateProfileDto, UpdateProfileDto } from './dto/update-profile.dto';
 import { AboutUserEntity } from './entities/about-user.entity';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -1795,8 +1809,8 @@ export class UsersService {
   async create(createUserDto: CreateUserDto) {
     await this.loginAlreadyExist(createUserDto.login);
     await this.emailAlreadyExist(createUserDto.email);
-
-    const user = await this.repository.create(createUserDto);
+    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    const user = await this.repository.create({ ...createUserDto, password: hashedPassword });
     const role = await this.roleService.getRoleByValue('USER');
     user.roles = [role];
     return this.repository.save(user);
